@@ -11,61 +11,77 @@
     padding: 0;
     text-align: center;
     font-family: sans-serif;
-    /* 禁止选中文本，防止点击时出现高亮框 */
+    /* 禁止选中文本，防止点击出现高亮 */
     -webkit-user-select: none;
     user-select: none;
-    /* 禁止触摸高亮 */
     -webkit-tap-highlight-color: transparent;
+    overflow: hidden; /* 防止出现滚动条 */
   }
   
-  #clock-container {
+  #container {
     position: absolute;
     top: 50%;
     left: 50%;
     -webkit-transform: translate(-50%, -50%);
     transform: translate(-50%, -50%);
     width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px; /* 日期和时间的间距 */
   }
 
-  #clock {
-    font-size: 150px;
+  /* 日期样式 */
+  #date {
     font-weight: bold;
-    line-height: 1;
-    display: block;
+    line-height: 1.2;
+    white-space: nowrap;
+    /* 初始大小，JS 会覆盖 */
+    font-size: 80px; 
   }
 
+  /* 时间样式 */
+  #clock {
+    font-weight: 900; /* 最粗 */
+    line-height: 1;
+    white-space: nowrap;
+    /* 初始大小，JS 会覆盖 */
+    font-size: 150px;
+  }
+
+  /* 时区指示器样式 */
   #timezone-indicator {
-    font-size: 20px;
-    color: #555555; /* 稍微淡一点，区分主次 */
-    margin-top: 10px;
-    display: block;
+    font-size: 18px;
+    color: #666666;
+    margin-top: 15px;
     font-weight: normal;
   }
   
-  /* 点击时的闪动效果类 */
-  .flash {
-    transition: opacity 0.2s;
-  }
+  /* 点击闪动效果 */
   .flash-active {
-    opacity: 0.3;
+    opacity: 0.4;
+    transition: opacity 0.1s;
   }
 </style>
 </head>
 <body>
 
-<div id="clock-container">
-  <!-- 主时间 -->
+<div id="container">
+  <!-- 日期显示 -->
+  <div id="date">YYYY-MM-DD</div>
+  <!-- 时间显示 -->
   <div id="clock">00:00</div>
-  <!-- 时区指示器 -->
+  <!-- 时区提示 -->
   <div id="timezone-indicator">UTC+0 (点击屏幕 +1 小时)</div>
 </div>
 
 <script>
 // 配置
-var STORAGE_KEY = 'kindle_clock_offset'; // 本地存储的键名
-var offset = 0; // 默认时区偏移量（小时）
+var STORAGE_KEY = 'kindle_clock_offset';
+var offset = 0;
 
-// 初始化：读取保存的时区
+// 初始化
 function init() {
   var saved = localStorage.getItem(STORAGE_KEY);
   if (saved !== null) {
@@ -73,115 +89,117 @@ function init() {
   }
   updateDisplay();
   
-  // 启动定时器，每秒检查一次（为了处理分钟变化）
-  // 虽然我们要每分钟刷新，但为了逻辑简单，每秒运行一次判断逻辑，只有分钟变了才更新DOM
+  // 每秒检查一次变化
   setInterval(tick, 1000);
 }
 
-// 获取当前计算后的时间
-function getAdjustedTime() {
+// 获取调整后的时间对象
+function getAdjustedDate() {
   var now = new Date();
-  // 获取当前 UTC 时间
   var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-  // 加上用户设定的偏移量
-  var adjustedDate = new Date(utc + (3600000 * offset));
-  return adjustedDate;
+  return new Date(utc + (3600000 * offset));
 }
 
-// 更新时间显示
+// 更新显示内容
 function updateDisplay() {
-  var date = getAdjustedTime();
-  var h = date.getHours();
-  var m = date.getMinutes();
+  var dateObj = getAdjustedDate();
   
-  if (h < 10) h = "0" + h;
+  // 处理日期 yyyy-MM-dd
+  var y = dateObj.getFullYear();
+  var m = dateObj.getMonth() + 1;
+  var d = dateObj.getDate();
   if (m < 10) m = "0" + m;
+  if (d < 10) d = "0" + d;
+  var dateStr = y + "-" + m + "-" + d;
   
-  var timeStr = h + ":" + m;
+  // 处理时间 HH:mm
+  var h = dateObj.getHours();
+  var min = dateObj.getMinutes();
+  if (h < 10) h = "0" + h;
+  if (min < 10) min = "0" + min;
+  var timeStr = h + ":" + min;
+  
   var tzStr = "UTC" + (offset >= 0 ? "+" : "") + offset;
   
+  // 更新 DOM
+  var dateEl = document.getElementById("date");
   var clockEl = document.getElementById("clock");
   var tzEl = document.getElementById("timezone-indicator");
   
-  // 只有时间数字变了才更新 DOM（减少墨水屏刷新）
+  if (dateEl.innerHTML !== dateStr) {
+    dateEl.innerHTML = dateStr;
+  }
+  
   if (clockEl.innerHTML !== timeStr) {
     clockEl.innerHTML = timeStr;
   }
   
-  // 时区文字通常不变，但初始化时需要设置
   if (tzEl.innerHTML.indexOf(tzStr) === -1) {
     tzEl.innerHTML = tzStr + " (点击屏幕 +1 小时)";
   }
   
-  // 动态调整字体大小
-  adjustFontSize();
+  // 重新计算字体大小
+  adjustFontSizes();
 }
 
-// 每分钟检查一次是否变化（优化版 tick）
+// 定时器逻辑
 var lastMinute = -1;
 function tick() {
-  var date = getAdjustedTime();
-  if (date.getMinutes() !== lastMinute) {
-    lastMinute = date.getMinutes();
+  var dateObj = getAdjustedDate();
+  if (dateObj.getMinutes() !== lastMinute) {
+    lastMinute = dateObj.getMinutes();
     updateDisplay();
   }
 }
 
-// 调整字体大小以适应屏幕
-function adjustFontSize() {
+// 独立计算日期和时间的字体大小，确保都占满宽度
+function adjustFontSizes() {
   var w = window.innerWidth || document.body.clientWidth;
   var h = window.innerHeight || document.body.clientHeight;
   
-  // 尝试让宽度占屏幕的 90%
-  var size = Math.floor(w * 0.9);
+  // --- 计算时间字体 ---
+  // 目标：宽度占屏幕的 90%，高度不超过屏幕的 50%
+  var clockSize = Math.floor(w * 0.95);
+  if (clockSize > h * 0.45) clockSize = Math.floor(h * 0.45);
+  if (clockSize < 40) clockSize = 40;
+  if (clockSize > 300) clockSize = 300; // 限制最大
   
-  // 限制最大高度，防止超出
-  if (size > h * 0.6) {
-    size = Math.floor(h * 0.6);
-  }
+  document.getElementById("clock").style.fontSize = clockSize + "px";
   
-  // 限制最小和最大值
-  if (size < 50) size = 50;
-  if (size > 400) size = 400;
+  // --- 计算日期字体 ---
+  // 目标：宽度占屏幕的 80% (比时间稍窄一点，显得有层次)，高度不超过屏幕的 20%
+  var dateSize = Math.floor(w * 0.85);
+  if (dateSize > h * 0.15) dateSize = Math.floor(h * 0.15);
+  if (dateSize < 20) dateSize = 20;
+  if (dateSize > 150) dateSize = 150;
   
-  document.getElementById("clock").style.fontSize = size + "px";
+  document.getElementById("date").style.fontSize = dateSize + "px";
 }
 
-// 处理点击事件：切换时区
+// 点击处理
 function handleTap() {
-  // 偏移量 +1
   offset += 1;
-  
-  // 范围限制：-12 到 +14 (如果需要循环可以取消下面注释)
+  // 可选：如果超过 +14 则重置为 -12，或者一直累加。这里选择一直累加以便灵活调整
   // if (offset > 14) offset = -12; 
   
-  // 保存到本地存储
   localStorage.setItem(STORAGE_KEY, offset.toString());
-  
-  // 立即更新显示
   updateDisplay();
   
-  // 视觉反馈：闪动一下
-  var container = document.getElementById("clock-container");
+  // 闪动反馈
+  var container = document.getElementById("container");
   container.classList.add("flash-active");
   setTimeout(function() {
     container.classList.remove("flash-active");
-  }, 200);
+  }, 150);
 }
 
-// 绑定点击事件到整个 body
 document.body.addEventListener('click', handleTap);
-// 兼容旧版 Kindle 的触摸事件
 document.body.addEventListener('touchstart', function(e) {
-  // 阻止默认行为（如缩放）
-  // e.preventDefault(); 
   handleTap();
 }, false);
 
-// 窗口大小改变时重算
-window.onresize = adjustFontSize;
+window.onresize = adjustFontSizes;
 
-// 启动
 init();
 </script>
 
