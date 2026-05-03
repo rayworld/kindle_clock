@@ -2,63 +2,187 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Time</title>
+<title>Kindle Clock</title>
 <style>
-  /* 最基础的样式，防止白底白字 */
   body {
     background-color: #ffffff;
     color: #000000;
     margin: 0;
     padding: 0;
     text-align: center;
-    /* 强制使用系统默认字体，不加载任何网络字体 */
-    font-family: sans-serif; 
+    font-family: sans-serif;
+    /* 禁止选中文本，防止点击时出现高亮框 */
+    -webkit-user-select: none;
+    user-select: none;
+    /* 禁止触摸高亮 */
+    -webkit-tap-highlight-color: transparent;
   }
-  #clock {
-    /* 使用绝对定位确保居中，兼容老式浏览器 */
+  
+  #clock-container {
     position: absolute;
     top: 50%;
     left: 50%;
-    /* 如果 transform 不支持，至少会显示在左上角，不会消失 */
     -webkit-transform: translate(-50%, -50%);
     transform: translate(-50%, -50%);
-    
-    font-size: 150px; /* 默认大小 */
+    width: 100%;
+  }
+
+  #clock {
+    font-size: 150px;
     font-weight: bold;
     line-height: 1;
+    display: block;
+  }
+
+  #timezone-indicator {
+    font-size: 20px;
+    color: #555555; /* 稍微淡一点，区分主次 */
+    margin-top: 10px;
+    display: block;
+    font-weight: normal;
+  }
+  
+  /* 点击时的闪动效果类 */
+  .flash {
+    transition: opacity 0.2s;
+  }
+  .flash-active {
+    opacity: 0.3;
   }
 </style>
 </head>
 <body>
 
-<!-- 即使 JS 不运行，这里也会显示 "00:00"，绝不会白屏 -->
-<div id="clock">00:00</div>
+<div id="clock-container">
+  <!-- 主时间 -->
+  <div id="clock">00:00</div>
+  <!-- 时区指示器 -->
+  <div id="timezone-indicator">UTC+0 (点击屏幕 +1 小时)</div>
+</div>
 
 <script>
-function update() {
+// 配置
+var STORAGE_KEY = 'kindle_clock_offset'; // 本地存储的键名
+var offset = 0; // 默认时区偏移量（小时）
+
+// 初始化：读取保存的时区
+function init() {
+  var saved = localStorage.getItem(STORAGE_KEY);
+  if (saved !== null) {
+    offset = parseInt(saved, 10);
+  }
+  updateDisplay();
+  
+  // 启动定时器，每秒检查一次（为了处理分钟变化）
+  // 虽然我们要每分钟刷新，但为了逻辑简单，每秒运行一次判断逻辑，只有分钟变了才更新DOM
+  setInterval(tick, 1000);
+}
+
+// 获取当前计算后的时间
+function getAdjustedTime() {
   var now = new Date();
-  var h = now.getHours();
-  var m = now.getMinutes();
+  // 获取当前 UTC 时间
+  var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  // 加上用户设定的偏移量
+  var adjustedDate = new Date(utc + (3600000 * offset));
+  return adjustedDate;
+}
+
+// 更新时间显示
+function updateDisplay() {
+  var date = getAdjustedTime();
+  var h = date.getHours();
+  var m = date.getMinutes();
+  
   if (h < 10) h = "0" + h;
   if (m < 10) m = "0" + m;
-  var t = h + ":" + m;
   
-  var el = document.getElementById("clock");
-  if (el) {
-    el.innerHTML = t;
-    
-    // 简单的字体大小调整逻辑，适配屏幕
-    var w = window.innerWidth || document.body.clientWidth;
-    var size = w * 0.8; 
-    if (size > 300) size = 300; // 最大限制
-    el.style.fontSize = size + "px";
+  var timeStr = h + ":" + m;
+  var tzStr = "UTC" + (offset >= 0 ? "+" : "") + offset;
+  
+  var clockEl = document.getElementById("clock");
+  var tzEl = document.getElementById("timezone-indicator");
+  
+  // 只有时间数字变了才更新 DOM（减少墨水屏刷新）
+  if (clockEl.innerHTML !== timeStr) {
+    clockEl.innerHTML = timeStr;
+  }
+  
+  // 时区文字通常不变，但初始化时需要设置
+  if (tzEl.innerHTML.indexOf(tzStr) === -1) {
+    tzEl.innerHTML = tzStr + " (点击屏幕 +1 小时)";
+  }
+  
+  // 动态调整字体大小
+  adjustFontSize();
+}
+
+// 每分钟检查一次是否变化（优化版 tick）
+var lastMinute = -1;
+function tick() {
+  var date = getAdjustedTime();
+  if (date.getMinutes() !== lastMinute) {
+    lastMinute = date.getMinutes();
+    updateDisplay();
   }
 }
 
-// 页面加载完成后立即执行
-update();
-// 每分钟更新
-setInterval(update, 60000);
+// 调整字体大小以适应屏幕
+function adjustFontSize() {
+  var w = window.innerWidth || document.body.clientWidth;
+  var h = window.innerHeight || document.body.clientHeight;
+  
+  // 尝试让宽度占屏幕的 90%
+  var size = Math.floor(w * 0.9);
+  
+  // 限制最大高度，防止超出
+  if (size > h * 0.6) {
+    size = Math.floor(h * 0.6);
+  }
+  
+  // 限制最小和最大值
+  if (size < 50) size = 50;
+  if (size > 400) size = 400;
+  
+  document.getElementById("clock").style.fontSize = size + "px";
+}
+
+// 处理点击事件：切换时区
+function handleTap() {
+  // 偏移量 +1
+  offset += 1;
+  
+  // 范围限制：-12 到 +14 (如果需要循环可以取消下面注释)
+  // if (offset > 14) offset = -12; 
+  
+  // 保存到本地存储
+  localStorage.setItem(STORAGE_KEY, offset.toString());
+  
+  // 立即更新显示
+  updateDisplay();
+  
+  // 视觉反馈：闪动一下
+  var container = document.getElementById("clock-container");
+  container.classList.add("flash-active");
+  setTimeout(function() {
+    container.classList.remove("flash-active");
+  }, 200);
+}
+
+// 绑定点击事件到整个 body
+document.body.addEventListener('click', handleTap);
+// 兼容旧版 Kindle 的触摸事件
+document.body.addEventListener('touchstart', function(e) {
+  // 阻止默认行为（如缩放）
+  // e.preventDefault(); 
+  handleTap();
+}, false);
+
+// 窗口大小改变时重算
+window.onresize = adjustFontSize;
+
+// 启动
+init();
 </script>
 
 </body>
