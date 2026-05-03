@@ -28,7 +28,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 15px;
+    gap: 20px;
   }
 
   #analog-clock {
@@ -40,16 +40,14 @@
     border: 8px solid #000000;
     box-sizing: border-box;
     margin: 0 auto;
-    /* 关键：创建新的层叠上下文，确保内部元素正常显示 */
-    z-index: 1; 
   }
 
   .center-dot {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     background-color: #000000;
     border-radius: 50%;
     transform: translate(-50%, -50%);
@@ -60,70 +58,60 @@
     position: absolute;
     top: 0;
     left: 50%;
-    width: 6px;
-    height: 20px;
+    width: 4px;
+    height: 15px;
     background-color: #000000;
     transform-origin: 50% 150px;
     transform: translateX(-50%) rotate(0deg);
     z-index: 1;
   }
 
-  /* 数字样式强化 */
-  .clock-number {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    /* 初始居中，JS 会偏移 */
-    transform: translate(-50%, -50%); 
-    font-weight: 900;
-    color: #000000 !important; /* 强制黑色 */
-    opacity: 1 !important;      /* 强制不透明 */
-    -webkit-font-smoothing: none; 
-    text-rendering: optimizeSpeed;
-    /* 关键：确保数字在刻度之上，指针之下或之上均可，这里设为 10 */
-    z-index: 10; 
-    line-height: 1;
-  }
-
-  .hour-number { font-size: 24px; }
-  .minute-number { font-size: 14px; color: #000000 !important; font-weight: bold; }
-
+  /* 指针样式 - 移除所有 transition，确保瞬间跳变 */
   .hand {
     position: absolute;
     bottom: 50%;
     left: 50%;
     background-color: #000000;
     transform-origin: bottom center;
-    z-index: 20; /* 指针在数字之上 */
-    border-top-left-radius: 4px;
-    border-top-right-radius: 4px;
+    z-index: 20;
+    border-top-left-radius: 2px;
+    border-top-right-radius: 2px;
   }
 
-  #hour-hand { width: 10px; height: 25%; }
-  #minute-hand { width: 7px; height: 38%; }
+  #hour-hand {
+    width: 8px;
+    height: 25%;
+    /* 预设一个角度，防止初始 0 度卡死 */
+    transform: translateX(-50%) rotate(0deg); 
+  }
+
+  #minute-hand {
+    width: 6px;
+    height: 38%;
+    transform: translateX(-50%) rotate(0deg);
+  }
 
   #digital-clock {
     font-weight: 900;
-    font-size: 60px;
+    font-size: 50px;
     line-height: 1;
     white-space: nowrap;
-    margin-top: 5px;
   }
 
   #date {
     font-weight: bold;
-    font-size: 30px;
+    font-size: 28px;
     white-space: nowrap;
-    margin-top: 5px;
   }
 
   #timezone-indicator {
-    font-size: 16px;
+    font-size: 14px;
     color: #555555;
-    margin-top: 5px;
   }
 
-  .flash-active { opacity: 0.5; }
+  .flash-active {
+    opacity: 0.5;
+  }
 </style>
 </head>
 <body>
@@ -133,8 +121,9 @@
     <div class="center-dot"></div>
     <div id="hour-hand" class="hand"></div>
     <div id="minute-hand" class="hand"></div>
-    <!-- 数字将由 JS 插入到这里 -->
+    <!-- 刻度由 JS 生成 -->
   </div>
+  
   <div id="digital-clock">--:--</div>
   <div id="date">---- -- --</div>
   <div id="timezone-indicator">UTC+0 (点击屏幕 +1 小时)</div>
@@ -154,19 +143,15 @@ function init() {
     offset = parseInt(saved, 10);
   }
   
-  // 1. 生成刻度和数字
-  createMarkersAndNumbers();
+  // 1. 生成刻度
+  createMarkers();
   
-  // 2. 立即刷新一次
-  refreshDisplay();
+  // 2. 连续三次强制刷新，确保 Kindle 渲染引擎被唤醒
+  forceRefresh();
+  setTimeout(forceRefresh, 300);
+  setTimeout(forceRefresh, 800);
   
-  // 3. 【关键】延迟 200ms 再次刷新数字位置，确保 Kindle 已完成布局
-  setTimeout(function() {
-    createMarkersAndNumbers(); // 重新生成以确保位置计算基于正确的尺寸
-    refreshDisplay();
-  }, 200);
-
-  // 4. 启动定时器
+  // 3. 启动定时器
   scheduleNextTick();
 }
 
@@ -183,7 +168,7 @@ function checkAndUpdate() {
   
   if (currentMin !== lastMin) {
     lastMin = currentMin;
-    refreshDisplay();
+    forceRefresh();
   }
 }
 
@@ -193,11 +178,22 @@ function getCalculatedDate(currentOffset) {
   return new Date(utc + (currentOffset * 3600000));
 }
 
-function refreshDisplay() {
+function forceRefresh() {
+  // 每次刷新都重新获取尺寸，防止 Kindle 布局未就绪
+  var radius = analogClockEl.offsetWidth / 2;
+  if (radius === 0) radius = 150; // 默认值
+  
+  // 重新计算刻度位置（防止初始位置错误）
+  var marks = document.querySelectorAll('.hour-mark');
+  for(var i=0; i<marks.length; i++) {
+    marks[i].style.transformOrigin = '50% ' + radius + 'px';
+  }
+
   var dateObj = getCalculatedDate(offset);
   var h = dateObj.getHours();
   var m = dateObj.getMinutes();
   
+  // 更新下方文字
   var hStr = (h < 10 ? '0' : '') + h;
   var mStr = (m < 10 ? '0' : '') + m;
   document.getElementById('digital-clock').innerHTML = hStr + ':' + mStr;
@@ -212,6 +208,7 @@ function refreshDisplay() {
   var tzStr = 'UTC' + (offset >= 0 ? '+' : '') + offset;
   document.getElementById('timezone-indicator').innerHTML = tzStr + ' (点击屏幕 +1 小时)';
   
+  // 更新指针
   updateHands(h, m);
 }
 
@@ -220,23 +217,29 @@ function updateHands(h, m) {
   var mAngle = m * 6;
   var hAngle = (h * 30) + (m * 0.5);
   
-  hourHand.style.transform = 'translateX(-50%) rotate(' + hAngle + 'deg)';
-  minuteHand.style.transform = 'translateX(-50%) rotate(' + mAngle + 'deg)';
+  // 直接赋值，不加任何多余空格或单位错误
+  var hStyle = 'translateX(-50%) rotate(' + hAngle + 'deg)';
+  var mStyle = 'translateX(-50%) rotate(' + mAngle + 'deg)';
   
-  // 强制重绘
-  analogClockEl.style.opacity = '0.99';
-  setTimeout(function(){ analogClockEl.style.opacity = '1'; }, 50);
+  hourHand.style.transform = hStyle;
+  minuteHand.style.transform = mStyle;
+  
+  // 【核心黑科技】强制触发重绘
+  // 通过微调 opacity 欺骗浏览器认为元素发生了变化，从而重新绘制
+  analogClockEl.style.opacity = '0.98';
+  setTimeout(function() {
+    analogClockEl.style.opacity = '1';
+  }, 50);
 }
 
-function createMarkersAndNumbers() {
-  // 清空旧元素
-  var existing = analogClockEl.querySelectorAll('.hour-mark, .clock-number');
+function createMarkers() {
+  // 清空旧刻度
+  var existing = analogClockEl.querySelectorAll('.hour-mark');
   for(var i=0; i<existing.length; i++) existing[i].remove();
-
-  var radius = analogClockEl.offsetWidth / 2;
-  if (radius === 0) radius = 150; // 防错默认值
   
-  // 1. 创建刻度
+  var radius = analogClockEl.offsetWidth / 2;
+  if (radius === 0) radius = 150;
+
   for (var i = 0; i < 12; i++) {
     var mark = document.createElement('div');
     mark.className = 'hour-mark';
@@ -244,64 +247,29 @@ function createMarkersAndNumbers() {
     mark.style.transform = 'translateX(-50%) rotate(' + (i * 30) + 'deg)';
     analogClockEl.appendChild(mark);
   }
-
-  // 2. 创建小时数字 (1-12)
-  var hRad = radius * 0.65;
-  for (var h = 1; h <= 12; h++) {
-    var el = document.createElement('div');
-    el.className = 'clock-number hour-number';
-    el.innerText = h; // 使用 innerText 兼容性更好
-    
-    // 计算坐标
-    var angle = (h * 30 - 90) * (Math.PI / 180);
-    var x = Math.cos(angle) * hRad;
-    var y = Math.sin(angle) * hRad;
-    
-    // 强制设置样式
-    el.style.left = '50%';
-    el.style.top = '50%';
-    el.style.transform = 'translate(-50%, -50%) translate(' + Math.round(x) + 'px, ' + Math.round(y) + 'px)';
-    el.style.zIndex = '10';
-    el.style.color = '#000000';
-    
-    analogClockEl.appendChild(el);
-  }
-
-  // 3. 创建分钟数字 (00, 05... 55)
-  var mRad = radius * 0.45;
-  for (var m = 0; m < 60; m += 5) {
-    var el = document.createElement('div');
-    el.className = 'clock-number minute-number';
-    el.innerText = (m < 10 ? '0' : '') + m;
-    
-    var angle = (m * 6 - 90) * (Math.PI / 180);
-    var x = Math.cos(angle) * mRad;
-    var y = Math.sin(angle) * mRad;
-    
-    el.style.left = '50%';
-    el.style.top = '50%';
-    el.style.transform = 'translate(-50%, -50%) translate(' + Math.round(x) + 'px, ' + Math.round(y) + 'px)';
-    el.style.zIndex = '10';
-    el.style.color = '#000000';
-    
-    analogClockEl.appendChild(el);
-  }
 }
 
 function handleTap() {
   offset += 1;
   localStorage.setItem(STORAGE_KEY, offset.toString());
-  lastMin = -1;
-  refreshDisplay();
+  lastMin = -1; // 强制下次检查必定刷新
   
+  // 点击后立即强制刷新
+  forceRefresh();
+  
+  // 闪动反馈
   var container = document.getElementById('container');
   container.className = 'flash-active';
   setTimeout(function(){ container.className = ''; }, 150);
 }
 
 document.body.addEventListener('click', handleTap);
-document.body.addEventListener('touchstart', function(e){ handleTap(); }, false);
+document.body.addEventListener('touchstart', function(e){ 
+  e.preventDefault(); // 防止双击缩放
+  handleTap(); 
+}, false);
 
+// 启动
 init();
 </script>
 
