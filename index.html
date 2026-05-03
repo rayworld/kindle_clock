@@ -11,10 +11,11 @@
     padding: 0;
     text-align: center;
     font-family: sans-serif;
+    /* 禁止选中文本，防止点击出现高亮 */
     -webkit-user-select: none;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
-    overflow: hidden;
+    overflow: hidden; /* 防止出现滚动条 */
   }
   
   #container {
@@ -28,32 +29,36 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    /* 减小间距，给大字腾出空间 */
-    gap: 10px; 
+    gap: 20px; /* 日期和时间的间距 */
   }
 
+  /* 日期样式 */
   #date {
     font-weight: bold;
-    line-height: 1.1;
+    line-height: 1.2;
     white-space: nowrap;
-    /* 初始值，JS 会覆盖 */
-    font-size: 100px; 
+    /* 初始大小，JS 会覆盖 */
+    font-size: 80px; 
   }
 
+  /* 时间样式 */
   #clock {
-    font-weight: 900;
+    font-weight: 900; /* 最粗 */
     line-height: 1;
     white-space: nowrap;
+    /* 初始大小，JS 会覆盖 */
     font-size: 150px;
   }
 
+  /* 时区指示器样式 */
   #timezone-indicator {
     font-size: 18px;
     color: #666666;
-    margin-top: 10px;
+    margin-top: 15px;
     font-weight: normal;
   }
   
+  /* 点击闪动效果 */
   .flash-active {
     opacity: 0.4;
     transition: opacity 0.1s;
@@ -63,34 +68,43 @@
 <body>
 
 <div id="container">
+  <!-- 日期显示 -->
   <div id="date">YYYY-MM-DD</div>
+  <!-- 时间显示 -->
   <div id="clock">00:00</div>
+  <!-- 时区提示 -->
   <div id="timezone-indicator">UTC+0 (点击屏幕 +1 小时)</div>
 </div>
 
 <script>
+// 配置
 var STORAGE_KEY = 'kindle_clock_offset';
 var offset = 0;
 
+// 初始化
 function init() {
   var saved = localStorage.getItem(STORAGE_KEY);
   if (saved !== null) {
     offset = parseInt(saved, 10);
   }
   updateDisplay();
+  
+  // 每秒检查一次变化
   setInterval(tick, 1000);
 }
 
+// 获取调整后的时间对象
 function getAdjustedDate() {
   var now = new Date();
   var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
   return new Date(utc + (3600000 * offset));
 }
 
+// 更新显示内容
 function updateDisplay() {
   var dateObj = getAdjustedDate();
   
-  // 日期 yyyy-MM-dd
+  // 处理日期 yyyy-MM-dd
   var y = dateObj.getFullYear();
   var m = dateObj.getMonth() + 1;
   var d = dateObj.getDate();
@@ -98,7 +112,7 @@ function updateDisplay() {
   if (d < 10) d = "0" + d;
   var dateStr = y + "-" + m + "-" + d;
   
-  // 时间 HH:mm
+  // 处理时间 HH:mm
   var h = dateObj.getHours();
   var min = dateObj.getMinutes();
   if (h < 10) h = "0" + h;
@@ -107,17 +121,28 @@ function updateDisplay() {
   
   var tzStr = "UTC" + (offset >= 0 ? "+" : "") + offset;
   
+  // 更新 DOM
   var dateEl = document.getElementById("date");
   var clockEl = document.getElementById("clock");
   var tzEl = document.getElementById("timezone-indicator");
   
-  if (dateEl.innerHTML !== dateStr) dateEl.innerHTML = dateStr;
-  if (clockEl.innerHTML !== timeStr) clockEl.innerHTML = timeStr;
-  if (tzEl.innerHTML.indexOf(tzStr) === -1) tzEl.innerHTML = tzStr + " (点击屏幕 +1 小时)";
+  if (dateEl.innerHTML !== dateStr) {
+    dateEl.innerHTML = dateStr;
+  }
   
+  if (clockEl.innerHTML !== timeStr) {
+    clockEl.innerHTML = timeStr;
+  }
+  
+  if (tzEl.innerHTML.indexOf(tzStr) === -1) {
+    tzEl.innerHTML = tzStr + " (点击屏幕 +1 小时)";
+  }
+  
+  // 重新计算字体大小
   adjustFontSizes();
 }
 
+// 定时器逻辑
 var lastMinute = -1;
 function tick() {
   var dateObj = getAdjustedDate();
@@ -127,45 +152,40 @@ function tick() {
   }
 }
 
+// 独立计算日期和时间的字体大小，确保都占满宽度
 function adjustFontSizes() {
   var w = window.innerWidth || document.body.clientWidth;
   var h = window.innerHeight || document.body.clientHeight;
   
-  // --- 核心修改：日期和时间都基于宽度计算，最大化利用屏幕 ---
-  
-  // 1. 计算时间字体 (宽度的 95%)
+  // --- 计算时间字体 ---
+  // 目标：宽度占屏幕的 90%，高度不超过屏幕的 50%
   var clockSize = Math.floor(w * 0.95);
-  // 安全检查：如果高度实在不够，稍微缩小一点，但优先级低于宽度
-  if (clockSize * 1.2 > h * 0.55) {
-     clockSize = Math.floor((h * 0.55) / 1.2);
-  }
+  if (clockSize > h * 0.45) clockSize = Math.floor(h * 0.45);
+  if (clockSize < 40) clockSize = 40;
+  if (clockSize > 300) clockSize = 300; // 限制最大
+  
   document.getElementById("clock").style.fontSize = clockSize + "px";
   
-  // 2. 计算日期字体 (宽度的 90%，尽量大)
-  // 不再严格限制高度比例，允许它占据剩余空间，只要不溢出
-  var dateSize = Math.floor(w * 0.90);
-  
-  // 简单的高度防溢出检查：确保 日期高度 + 时间高度 < 屏幕高度
-  // 估算高度：字体大小 * 1.1 (行高)
-  var estimatedTotalHeight = (dateSize * 1.1) + (clockSize * 1.1) + 20; // 20 是间距
-  
-  if (estimatedTotalHeight > h) {
-      // 如果超出了，按比例缩小日期，优先保证时间大小
-      var availableForDate = h - (clockSize * 1.1) - 20;
-      dateSize = Math.floor(availableForDate / 1.1);
-  }
-  
-  // 最小字号限制
-  if (dateSize < 30) dateSize = 30;
+  // --- 计算日期字体 ---
+  // 目标：宽度占屏幕的 80% (比时间稍窄一点，显得有层次)，高度不超过屏幕的 20%
+  var dateSize = Math.floor(w * 0.85);
+  if (dateSize > h * 0.15) dateSize = Math.floor(h * 0.15);
+  if (dateSize < 20) dateSize = 20;
+  if (dateSize > 150) dateSize = 150;
   
   document.getElementById("date").style.fontSize = dateSize + "px";
 }
 
+// 点击处理
 function handleTap() {
   offset += 1;
+  // 可选：如果超过 +14 则重置为 -12，或者一直累加。这里选择一直累加以便灵活调整
+  // if (offset > 14) offset = -12; 
+  
   localStorage.setItem(STORAGE_KEY, offset.toString());
   updateDisplay();
   
+  // 闪动反馈
   var container = document.getElementById("container");
   container.classList.add("flash-active");
   setTimeout(function() {
