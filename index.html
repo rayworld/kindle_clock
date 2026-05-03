@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网页版时钟</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #282c34;
+            color: #61dafb;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        #clock {
+            font-size: 5rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000000;
+        }
+        #date {
+            position: absolute;
+            top: 20%;
+            font-size: 1.5rem;
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <div id="date"></div>
+    <div id="clock"></div>
+
+    <script>
+        function updateClock() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('zh-CN', { hour12: false });
+            const dateString = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+            
+            document.getElementById('clock').textContent = timeString;
+            document.getElementById('date').textContent = dateString;
+        }
+
+        setInterval(updateClock, 1000);
+        updateClock(); // 初始化执行一次
+    </script>
+</body>
+</html>
