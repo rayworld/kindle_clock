@@ -53,7 +53,7 @@
     background-color: #000000;
     border-radius: 50%;
     transform: translate(-50%, -50%);
-    z-index: 20;
+    z-index: 30;
   }
 
   /* 刻度线 */
@@ -64,9 +64,26 @@
     width: 6px;
     height: 20px;
     background-color: #000000;
-    transform-origin: 50% 150px; /* JS 会动态修正这个值 */
+    transform-origin: 50% 150px;
     transform: translateX(-50%) rotate(0deg);
+    z-index: 1;
   }
+
+  /* 表盘上的数字 */
+  .clock-number {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-weight: 900;
+    color: #000000;
+    -webkit-font-smoothing: none; 
+    text-rendering: optimizeSpeed;
+    z-index: 2;
+  }
+
+  .hour-number { font-size: 24px; }
+  .minute-number { font-size: 14px; color: #333333; font-weight: bold; }
 
   /* 指针通用 */
   .hand {
@@ -76,9 +93,11 @@
     background-color: #000000;
     transform-origin: bottom center;
     transform: translateX(-50%) rotate(0deg);
-    z-index: 10;
+    z-index: 20;
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
+    /* 关键：确保指针过渡平滑，但在 Kindle 上通常直接跳变更好，这里移除 transition 以防延迟 */
+    /* transition: transform 0.5s;  <-- 移除它，让指针每分钟瞬间跳动，更符合电子表特性 */
   }
 
   /* 时针 */
@@ -93,7 +112,7 @@
     height: 38%;
   }
 
-  /* 数字时间 */
+  /* 下方数字时间 */
   #digital-clock {
     font-weight: 900;
     font-size: 60px;
@@ -102,7 +121,7 @@
     margin-top: 5px;
   }
 
-  /* 日期 */
+  /* 下方日期 */
   #date {
     font-weight: bold;
     font-size: 30px;
@@ -126,15 +145,13 @@
 <body>
 
 <div id="container">
-  <!-- 表盘部分 -->
   <div id="analog-clock">
     <div class="center-dot"></div>
     <div id="hour-hand" class="hand"></div>
     <div id="minute-hand" class="hand"></div>
-    <!-- 刻度由 JS 生成 -->
+    <!-- 刻度和数字由 JS 生成 -->
   </div>
 
-  <!-- 数字时间和日期部分 (之前被注释掉了，现在已修复) -->
   <div id="digital-clock">00:00</div>
   <div id="date">YYYY-MM-DD</div>
   <div id="timezone-indicator">UTC+0 (点击屏幕 +1 小时)</div>
@@ -144,6 +161,7 @@
 var STORAGE_KEY = 'kindle_clock_offset';
 var offset = 0;
 var analogClockEl = document.getElementById('analog-clock');
+var lastRenderedMinute = -1; // 记录上次渲染的分钟，防止重复刷新
 
 function init() {
   var saved = localStorage.getItem(STORAGE_KEY);
@@ -151,24 +169,68 @@ function init() {
     offset = parseInt(saved, 10);
   }
   
-  createHourMarks();
-  refreshDisplay();
+  createMarkersAndNumbers();
   
-  // 每分钟更新一次
-  setInterval(refreshDisplay, 60000);
+  // 【关键】初始化时立即强制渲染一次，不管当前是第几秒
+  refreshDisplay(true);
+  
+  // 每秒检查一次时间
+  setInterval(function() {
+    var dateObj = getCalculatedDate(offset);
+    var currentMinute = dateObj.getMinutes();
+    
+    // 只有当分钟数发生变化时，才重新渲染（每分钟刷新一次）
+    if (currentMinute !== lastRenderedMinute) {
+      lastRenderedMinute = currentMinute;
+      refreshDisplay(true);
+    }
+  }, 1000);
 }
 
-// 创建 12 个刻度
-function createHourMarks() {
+// 创建刻度线和表盘数字
+function createMarkersAndNumbers() {
+  // 清空旧内容（防止 resize 时重复添加）
+  var oldMarks = analogClockEl.querySelectorAll('.hour-mark, .clock-number');
+  oldMarks.forEach(function(el) { el.remove(); });
+
   var radius = analogClockEl.offsetWidth / 2;
+  
+  // 1. 创建 12 个刻度线
   for (var i = 0; i < 12; i++) {
     var mark = document.createElement('div');
     mark.className = 'hour-mark';
-    // 设置旋转中心点为表盘半径
     mark.style.transformOrigin = '50% ' + radius + 'px';
-    // 设置旋转角度
     mark.style.transform = 'translateX(-50%) rotate(' + (i * 30) + 'deg)';
     analogClockEl.appendChild(mark);
+  }
+
+  // 2. 创建 12 个小时数字 (1-12)
+  var hourRadius = radius * 0.65;
+  for (var h = 1; h <= 12; h++) {
+    var num = document.createElement('div');
+    num.className = 'clock-number hour-number';
+    num.textContent = h;
+    var angleDeg = (h * 30) - 90; 
+    var angleRad = angleDeg * (Math.PI / 180);
+    var x = Math.cos(angleRad) * hourRadius;
+    var y = Math.sin(angleRad) * hourRadius;
+    num.style.transform = 'translate(-50%, -50%) translate(' + x + 'px, ' + y + 'px)';
+    analogClockEl.appendChild(num);
+  }
+
+  // 3. 创建 12 个分钟数字 (00, 05... 55)
+  var minRadius = radius * 0.45;
+  for (var m = 0; m < 60; m += 5) {
+    var num = document.createElement('div');
+    num.className = 'clock-number minute-number';
+    var mStr = (m < 10 ? '0' : '') + m;
+    num.textContent = mStr;
+    var mAngleDeg = (m * 6) - 90;
+    var mAngleRad = mAngleDeg * (Math.PI / 180);
+    var mx = Math.cos(mAngleRad) * minRadius;
+    var my = Math.sin(mAngleRad) * minRadius;
+    num.style.transform = 'translate(-50%, -50%) translate(' + mx + 'px, ' + my + 'px)';
+    analogClockEl.appendChild(num);
   }
 }
 
@@ -178,19 +240,18 @@ function getCalculatedDate(currentOffset) {
   return new Date(utcTime + (currentOffset * 3600000));
 }
 
-function refreshDisplay() {
+function refreshDisplay(force) {
   var dateObj = getCalculatedDate(offset);
   
-  // 1. 获取时间数值
   var h = dateObj.getHours();
   var m = dateObj.getMinutes();
   
-  // 2. 更新数字时钟显示
+  // 1. 更新下方数字时钟
   var hStr = (h < 10 ? '0' : '') + h;
   var mStr = (m < 10 ? '0' : '') + m;
   document.getElementById('digital-clock').textContent = hStr + ':' + mStr;
   
-  // 3. 更新日期显示
+  // 2. 更新下方日期
   var y = dateObj.getFullYear();
   var month = dateObj.getMonth() + 1;
   var d = dateObj.getDate();
@@ -198,25 +259,32 @@ function refreshDisplay() {
   var dStr = (d < 10 ? '0' : '') + d;
   document.getElementById('date').textContent = y + '-' + monthStr + '-' + dStr;
   
-  // 4. 更新时区提示
+  // 3. 更新时区提示
   var tzStr = 'UTC' + (offset >= 0 ? '+' : '') + offset;
   document.getElementById('timezone-indicator').textContent = tzStr + ' (点击屏幕 +1 小时)';
   
-  // 5. 更新表盘指针
+  // 4. 【核心】更新指针角度
   updateAnalogHands(h, m);
   
-  // 6. 调整大小
-  adjustLayout();
+  // 5. 调整布局（仅在力或窗口变化时可能需要，这里每次调用以确保万无一失）
+  if(force) adjustLayout();
 }
 
 function updateAnalogHands(hours, minutes) {
+  // 转为 12 小时制
   hours = hours % 12;
-  var hourAngle = (hours * 30) + (minutes * 0.5);
+  
+  // 计算角度
+  // 分针：每分钟 6 度
   var minuteAngle = minutes * 6;
+  
+  // 时针：每小时 30 度 + 每分钟 0.5 度
+  var hourAngle = (hours * 30) + (minutes * 0.5);
   
   var hourHand = document.getElementById('hour-hand');
   var minuteHand = document.getElementById('minute-hand');
   
+  // 应用旋转
   hourHand.style.transform = 'translateX(-50%) rotate(' + hourAngle + 'deg)';
   minuteHand.style.transform = 'translateX(-50%) rotate(' + minuteAngle + 'deg)';
 }
@@ -225,14 +293,41 @@ function adjustLayout() {
   var w = window.innerWidth || document.body.clientWidth;
   var h = window.innerHeight || document.body.clientHeight;
   
-  // 重新计算刻度中心点 (防止窗口大小变化导致刻度偏移)
   var radius = analogClockEl.offsetWidth / 2;
+  
+  // 更新刻度线中心
   var marks = document.querySelectorAll('.hour-mark');
   for(var i=0; i<marks.length; i++) {
     marks[i].style.transformOrigin = '50% ' + radius + 'px';
   }
+  
+  // 更新小时数字位置
+  var hourNums = document.querySelectorAll('.hour-number');
+  var hourRadius = radius * 0.65;
+  var hIndex = 1;
+  hourNums.forEach(function(el) {
+    var angleDeg = (hIndex * 30) - 90;
+    var angleRad = angleDeg * (Math.PI / 180);
+    var x = Math.cos(angleRad) * hourRadius;
+    var y = Math.sin(angleRad) * hourRadius;
+    el.style.transform = 'translate(-50%, -50%) translate(' + x + 'px, ' + y + 'px)';
+    hIndex++;
+  });
 
-  // 自适应字体大小
+  // 更新分钟数字位置
+  var minNums = document.querySelectorAll('.minute-number');
+  var minRadius = radius * 0.45;
+  var mVal = 0;
+  minNums.forEach(function(el) {
+    var angleDeg = (mVal * 6) - 90;
+    var angleRad = angleDeg * (Math.PI / 180);
+    var x = Math.cos(angleRad) * minRadius;
+    var y = Math.sin(angleRad) * minRadius;
+    el.style.transform = 'translate(-50%, -50%) translate(' + x + 'px, ' + y + 'px)';
+    mVal += 5;
+  });
+
+  // 自适应字体
   var digitalSize = Math.floor(w * 0.25);
   if (digitalSize > 80) digitalSize = 80;
   if (digitalSize < 30) digitalSize = 30;
@@ -243,7 +338,7 @@ function adjustLayout() {
   if (dateSize < 20) dateSize = 20;
   document.getElementById('date').style.fontSize = dateSize + 'px';
   
-  // 自适应表盘大小
+  // 自适应表盘
   var clockSize = Math.min(w, h) * 0.55;
   if (clockSize > 350) clockSize = 350;
   if (clockSize < 200) clockSize = 200;
@@ -254,7 +349,10 @@ function adjustLayout() {
 function handleTap() {
   offset += 1;
   localStorage.setItem(STORAGE_KEY, offset.toString());
-  refreshDisplay();
+  
+  // 点击后立即重置 lastRenderedMinute，强制立即刷新指针
+  lastRenderedMinute = -1; 
+  refreshDisplay(true);
   
   var container = document.getElementById('container');
   container.classList.add('flash-active');
