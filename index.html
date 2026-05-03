@@ -5,7 +5,7 @@
 <title>Kindle Clock</title>
 <style>
   body {
-    background-color: #FFFFFF;
+    background-color: #ffffff;
     color: #000000;
     margin: 0;
     padding: 0;
@@ -16,7 +16,7 @@
     -webkit-tap-highlight-color: transparent;
     overflow: hidden;
   }
-
+  
   #container {
     position: absolute;
     top: 50%;
@@ -31,245 +31,172 @@
     gap: 20px;
   }
 
-  #analog-clock {
-    position: relative;
-    width: 300px;
-    height: 300px;
-    border-radius: 50%;
-    background-color: #FFFFFF;
-    border: 8px solid #000000;
-    box-sizing: border-box;
-    margin: 0 auto;
-  }
-
-  .center-dot {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 12px;
-    height: 12px;
-    background-color: #000000;
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 30;
-  }
-
-  .hour-mark {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    width: 4px;
-    height: 15px;
-    background-color: #000000;
-    transform-origin: 50% 150px;
-    transform: translateX(-50%) rotate(0deg);
-    z-index: 1;
-  }
-
-  /* 指针样式 - 移除所有 transition，确保瞬间跳变 */
-  .hand {
-    position: absolute;
-    bottom: 50%;
-    left: 50%;
-    background-color: #000000;
-    transform-origin: bottom center;
-    z-index: 20;
-    border-top-left-radius: 2px;
-    border-top-right-radius: 2px;
-  }
-
-  #hour-hand {
-    width: 8px;
-    height: 25%;
-    /* 预设一个角度，防止初始 0 度卡死 */
-    transform: translateX(-50%) rotate(0deg); 
-  }
-
-  #minute-hand {
-    width: 6px;
-    height: 38%;
-    transform: translateX(-50%) rotate(0deg);
-  }
-
-  #digital-clock {
-    font-weight: 900;
-    font-size: 50px;
-    line-height: 1;
-    white-space: nowrap;
-  }
-
   #date {
     font-weight: bold;
-    font-size: 28px;
+    line-height: 1.2;
     white-space: nowrap;
+    text-align: center;
+    margin: 0 auto;
+    display: block;
+    width: 100%;
+    font-size: 80px; 
+  }
+
+  #clock {
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+    text-align: center;
+    display: block;
+    width: 100%;
+    font-size: 150px;
   }
 
   #timezone-indicator {
-    font-size: 14px;
-    color: #555555;
+    font-size: 18px;
+    color: #666666;
+    margin-top: 15px;
+    font-weight: normal;
+    text-align: center;
   }
-
+  
   .flash-active {
-    opacity: 0.5;
+    opacity: 0.4;
+    transition: opacity 0.1s;
   }
 </style>
 </head>
 <body>
 
 <div id="container">
-  <div id="analog-clock">
-    <div class="center-dot"></div>
-    <div id="hour-hand" class="hand"></div>
-    <div id="minute-hand" class="hand"></div>
-    <!-- 刻度由 JS 生成 -->
-  </div>
-  
-  <div id="digital-clock">--:--</div>
-  <div id="date">---- -- --</div>
+  <div id="date">YYYY-MM-DD</div>
+  <div id="clock">00:00</div>
   <div id="timezone-indicator">UTC+0 (点击屏幕 +1 小时)</div>
 </div>
 
 <script>
 var STORAGE_KEY = 'kindle_clock_offset';
 var offset = 0;
-var analogClockEl = document.getElementById('analog-clock');
-var hourHand = document.getElementById('hour-hand');
-var minuteHand = document.getElementById('minute-hand');
-var lastMin = -1;
 
 function init() {
   var saved = localStorage.getItem(STORAGE_KEY);
   if (saved !== null) {
     offset = parseInt(saved, 10);
   }
-  
-  // 1. 生成刻度
-  createMarkers();
-  
-  // 2. 连续三次强制刷新，确保 Kindle 渲染引擎被唤醒
-  forceRefresh();
-  setTimeout(forceRefresh, 300);
-  setTimeout(forceRefresh, 800);
-  
-  // 3. 启动定时器
-  scheduleNextTick();
+  // 初始化时立即刷新一次
+  refreshDisplay();
+  // 启动定时器，每秒检查是否需要更新（处理分钟变化）
+  setInterval(tick, 1000);
 }
 
-function scheduleNextTick() {
-  setTimeout(function() {
-    checkAndUpdate();
-    scheduleNextTick();
-  }, 1000);
-}
-
-function checkAndUpdate() {
-  var dateObj = getCalculatedDate(offset);
-  var currentMin = dateObj.getMinutes();
-  
-  if (currentMin !== lastMin) {
-    lastMin = currentMin;
-    forceRefresh();
-  }
-}
-
+// 【核心函数】获取基于当前真实时间和最新偏移量的日期对象
 function getCalculatedDate(currentOffset) {
+  // 1. 获取当前的真实系统时间 (Now)
   var now = new Date();
-  var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-  return new Date(utc + (currentOffset * 3600000));
+  
+  // 2. 转换为 UTC 时间戳 (毫秒)
+  // getTimezoneOffset() 返回的是本地时间与 UTC 的差值 (分钟)，需转为毫秒并反向加减
+  var utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+  
+  // 3. 加上用户设定的时区偏移量 (小时 -> 毫秒)
+  var adjustedTime = utcTime + (currentOffset * 3600000);
+  
+  // 4. 返回新的日期对象
+  return new Date(adjustedTime);
 }
 
-function forceRefresh() {
-  // 每次刷新都重新获取尺寸，防止 Kindle 布局未就绪
-  var radius = analogClockEl.offsetWidth / 2;
-  if (radius === 0) radius = 150; // 默认值
-  
-  // 重新计算刻度位置（防止初始位置错误）
-  var marks = document.querySelectorAll('.hour-mark');
-  for(var i=0; i<marks.length; i++) {
-    marks[i].style.transformOrigin = '50% ' + radius + 'px';
-  }
-
+// 刷新显示内容
+function refreshDisplay() {
+  // 每次调用都重新计算当前时间 + 当前偏移量
   var dateObj = getCalculatedDate(offset);
-  var h = dateObj.getHours();
-  var m = dateObj.getMinutes();
   
-  // 更新下方文字
-  var hStr = (h < 10 ? '0' : '') + h;
-  var mStr = (m < 10 ? '0' : '') + m;
-  document.getElementById('digital-clock').innerHTML = hStr + ':' + mStr;
-  
+  // --- 格式化日期 yyyy-MM-dd ---
   var y = dateObj.getFullYear();
-  var mo = dateObj.getMonth() + 1;
+  var m = dateObj.getMonth() + 1;
   var d = dateObj.getDate();
-  var moStr = (mo < 10 ? '0' : '') + mo;
-  var dStr = (d < 10 ? '0' : '') + d;
-  document.getElementById('date').innerHTML = y + '-' + moStr + '-' + dStr;
+  if (m < 10) m = "0" + m;
+  if (d < 10) d = "0" + d;
+  var dateStr = y + "-" + m + "-" + d;
   
-  var tzStr = 'UTC' + (offset >= 0 ? '+' : '') + offset;
-  document.getElementById('timezone-indicator').innerHTML = tzStr + ' (点击屏幕 +1 小时)';
+  // --- 格式化时间 HH:mm ---
+  var h = dateObj.getHours();
+  var min = dateObj.getMinutes();
+  if (h < 10) h = "0" + h;
+  if (min < 10) min = "0" + min;
+  var timeStr = h + ":" + min;
   
-  // 更新指针
-  updateHands(h, m);
+  // --- 格式化时区提示 ---
+  var tzStr = "UTC" + (offset >= 0 ? "+" : "") + offset;
+  
+  // --- 更新 DOM ---
+  var dateEl = document.getElementById("date");
+  var clockEl = document.getElementById("clock");
+  var tzEl = document.getElementById("timezone-indicator");
+  
+  // 强制更新内容，确保 Kindle 重绘
+  dateEl.innerHTML = dateStr;
+  clockEl.innerHTML = timeStr;
+  tzEl.innerHTML = tzStr + " (点击屏幕 +1 小时)";
+  
+  // 调整字体大小
+  adjustFontSizes();
 }
 
-function updateHands(h, m) {
-  h = h % 12;
-  var mAngle = m * 6;
-  var hAngle = (h * 30) + (m * 0.5);
-  
-  // 直接赋值，不加任何多余空格或单位错误
-  var hStyle = 'translateX(-50%) rotate(' + hAngle + 'deg)';
-  var mStyle = 'translateX(-50%) rotate(' + mAngle + 'deg)';
-  
-  hourHand.style.transform = hStyle;
-  minuteHand.style.transform = mStyle;
-  
-  // 【核心黑科技】强制触发重绘
-  // 通过微调 opacity 欺骗浏览器认为元素发生了变化，从而重新绘制
-  analogClockEl.style.opacity = '0.98';
-  setTimeout(function() {
-    analogClockEl.style.opacity = '1';
-  }, 50);
-}
-
-function createMarkers() {
-  // 清空旧刻度
-  var existing = analogClockEl.querySelectorAll('.hour-mark');
-  for(var i=0; i<existing.length; i++) existing[i].remove();
-  
-  var radius = analogClockEl.offsetWidth / 2;
-  if (radius === 0) radius = 150;
-
-  for (var i = 0; i < 12; i++) {
-    var mark = document.createElement('div');
-    mark.className = 'hour-mark';
-    mark.style.transformOrigin = '50% ' + radius + 'px';
-    mark.style.transform = 'translateX(-50%) rotate(' + (i * 30) + 'deg)';
-    analogClockEl.appendChild(mark);
+// 定时器逻辑：只有分钟变了才调用刷新，减少不必要的重绘
+var lastMinute = -1;
+function tick() {
+  // 这里也使用同样的逻辑计算当前分钟，判断是否变化
+  var dateObj = getCalculatedDate(offset);
+  if (dateObj.getMinutes() !== lastMinute) {
+    lastMinute = dateObj.getMinutes();
+    refreshDisplay();
   }
 }
 
+function adjustFontSizes() {
+  var w = window.innerWidth || document.body.clientWidth;
+  var h = window.innerHeight || document.body.clientHeight;
+  
+  var clockSize = Math.floor(w * 0.95);
+  if (clockSize > h * 0.45) clockSize = Math.floor(h * 0.45);
+  if (clockSize < 40) clockSize = 40;
+  if (clockSize > 300) clockSize = 300;
+  document.getElementById("clock").style.fontSize = clockSize + "px";
+  
+  var dateSize = Math.floor(w * 0.85);
+  if (dateSize > h * 0.15) dateSize = Math.floor(h * 0.15);
+  if (dateSize < 20) dateSize = 20;
+  if (dateSize > 150) dateSize = 150;
+  document.getElementById("date").style.fontSize = dateSize + "px";
+}
+
+// 【关键修改】点击处理逻辑
 function handleTap() {
+  // 1. 先增加偏移量
   offset += 1;
+  
+  // 2. 保存到本地存储
   localStorage.setItem(STORAGE_KEY, offset.toString());
-  lastMin = -1; // 强制下次检查必定刷新
   
-  // 点击后立即强制刷新
-  forceRefresh();
+  // 3. 【重要】立即重新获取当前真实时间 + 新偏移量，并刷新显示
+  // 不再依赖旧的时间对象，而是完全重新计算
+  refreshDisplay();
   
-  // 闪动反馈
-  var container = document.getElementById('container');
-  container.className = 'flash-active';
-  setTimeout(function(){ container.className = ''; }, 150);
+  // 4. 视觉反馈
+  var container = document.getElementById("container");
+  container.classList.add("flash-active");
+  setTimeout(function() {
+    container.classList.remove("flash-active");
+  }, 150);
 }
 
 document.body.addEventListener('click', handleTap);
-document.body.addEventListener('touchstart', function(e){ 
-  e.preventDefault(); // 防止双击缩放
-  handleTap(); 
+document.body.addEventListener('touchstart', function(e) {
+  handleTap();
 }, false);
 
-// 启动
+window.onresize = adjustFontSizes;
+
 init();
 </script>
 
