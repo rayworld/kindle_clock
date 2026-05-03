@@ -2,48 +2,107 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>网页版时钟</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kindle Clock</title>
     <style>
+        /* 强制黑白模式，优化电子墨水屏显示 */
         body {
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
-            background-color: #282c34;
-            color: #61dafb;
-            font-family: 'Courier New', Courier, monospace;
+            background-color: #FFFFFF; /* 纯白背景 */
+            color: #000000; /* 纯黑文字 */
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; /* 通用清晰字体 */
+            overflow: hidden;
+            -webkit-font-smoothing: none; /* 关闭抗锯齿，使墨水屏文字更锐利 */
         }
+
         #clock {
-            font-size: 5rem;
-            font-weight: bold;
-            text-shadow: 2px 2px 4px #000000;
+            font-weight: 900; /* 最粗字体 */
+            white-space: nowrap;
+            line-height: 1;
+            /* 初始大小，会被 JS 动态覆盖 */
+            font-size: 20vw; 
         }
-        #date {
-            position: absolute;
-            top: 20%;
-            font-size: 1.5rem;
-            color: #ffffff;
+
+        /* 隐藏滚动条 */
+        ::-webkit-scrollbar {
+            display: none;
         }
     </style>
 </head>
 <body>
-    <div id="date"></div>
     <div id="clock"></div>
 
     <script>
+        const clockElement = document.getElementById('clock');
+
         function updateClock() {
             const now = new Date();
-            const timeString = now.toLocaleTimeString('zh-CN', { hour12: false });
-            const dateString = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const timeString = `${hours}:${minutes}`;
             
-            document.getElementById('clock').textContent = timeString;
-            document.getElementById('date').textContent = dateString;
+            // 仅当时间变化时更新 DOM，减少墨水屏刷新
+            if (clockElement.textContent !== timeString) {
+                clockElement.textContent = timeString;
+                // 某些 Kindle 浏览器在内容变化时会触发重绘，这正好是我们需要的
+            }
         }
 
-        setInterval(updateClock, 1000);
-        updateClock(); // 初始化执行一次
+        function adjustFontSize() {
+            // 获取窗口尺寸
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            
+            // Kindle 6 英寸屏幕通常较窄，我们尝试找到一个最大的字体
+            // 策略：从 10vw 开始测试，逐步增加，直到超出屏幕宽度的 90%
+            let size = 10;
+            const step = 1;
+            const maxWidth = width * 0.95; // 留出少量边距
+
+            // 简单的线性搜索对于这种单次计算足够快
+            while (true) {
+                clockElement.style.fontSize = size + 'px';
+                if (clockElement.offsetWidth > maxWidth) {
+                    // 如果超出了，回退一步
+                    clockElement.style.fontSize = (size - step) + 'px';
+                    break;
+                }
+                size += step;
+                
+                // 安全上限，防止死循环
+                if (size > 2000) break;
+            }
+        }
+
+        // 保持屏幕常亮的尝试（利用视频播放 API 或 定时器防止休眠）
+        // 注意：并非所有 Kindle 版本都支持此方法，部分仍需手动设置“永不休眠”
+        function keepAlive() {
+            // 方法：创建一个隐藏的 video 标签或利用 noSleep 逻辑
+            // 这里使用一个简单的定时器配合请求唤醒锁 (Wake Lock API)，如果支持的话
+            if ('wakeLock' in navigator) {
+                navigator.wakeLock.request('screen').catch(err => console.log(err));
+            }
+        }
+
+        // 初始化
+        updateClock();
+        adjustFontSize();
+        keepAlive();
+
+        // 每分钟更新一次 (60000ms)
+        setInterval(updateClock, 60000);
+
+        // 监听窗口大小变化（例如旋转屏幕）
+        window.addEventListener('resize', () => {
+            adjustFontSize();
+        });
+        
+        // 针对 Kindle 浏览器的特殊优化：点击屏幕重新调整字体（防止渲染错位）
+        document.addEventListener('click', adjustFontSize);
     </script>
 </body>
 </html>
