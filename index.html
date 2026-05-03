@@ -40,6 +40,8 @@
     border: 8px solid #000000;
     box-sizing: border-box;
     margin: 0 auto;
+    /* 关键：创建新的层叠上下文，确保内部元素正常显示 */
+    z-index: 1; 
   }
 
   .center-dot {
@@ -66,20 +68,25 @@
     z-index: 1;
   }
 
+  /* 数字样式强化 */
   .clock-number {
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
+    /* 初始居中，JS 会偏移 */
+    transform: translate(-50%, -50%); 
     font-weight: 900;
-    color: #000000;
+    color: #000000 !important; /* 强制黑色 */
+    opacity: 1 !important;      /* 强制不透明 */
     -webkit-font-smoothing: none; 
     text-rendering: optimizeSpeed;
-    z-index: 2;
+    /* 关键：确保数字在刻度之上，指针之下或之上均可，这里设为 10 */
+    z-index: 10; 
+    line-height: 1;
   }
 
   .hour-number { font-size: 24px; }
-  .minute-number { font-size: 14px; color: #333333; font-weight: bold; }
+  .minute-number { font-size: 14px; color: #000000 !important; font-weight: bold; }
 
   .hand {
     position: absolute;
@@ -87,8 +94,7 @@
     left: 50%;
     background-color: #000000;
     transform-origin: bottom center;
-    /* 关键：移除 transition，让指针瞬间跳动，避免 Kindle 渲染队列堵塞 */
-    z-index: 20;
+    z-index: 20; /* 指针在数字之上 */
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
   }
@@ -127,6 +133,7 @@
     <div class="center-dot"></div>
     <div id="hour-hand" class="hand"></div>
     <div id="minute-hand" class="hand"></div>
+    <!-- 数字将由 JS 插入到这里 -->
   </div>
   <div id="digital-clock">--:--</div>
   <div id="date">---- -- --</div>
@@ -141,7 +148,6 @@ var hourHand = document.getElementById('hour-hand');
 var minuteHand = document.getElementById('minute-hand');
 var lastMin = -1;
 
-// 初始化
 function init() {
   var saved = localStorage.getItem(STORAGE_KEY);
   if (saved !== null) {
@@ -151,27 +157,30 @@ function init() {
   // 1. 生成刻度和数字
   createMarkersAndNumbers();
   
-  // 2. 立即执行一次刷新
+  // 2. 立即刷新一次
   refreshDisplay();
   
-  // 3. 【关键】使用 setTimeout 递归调用，替代 setInterval，兼容性更好
+  // 3. 【关键】延迟 200ms 再次刷新数字位置，确保 Kindle 已完成布局
+  setTimeout(function() {
+    createMarkersAndNumbers(); // 重新生成以确保位置计算基于正确的尺寸
+    refreshDisplay();
+  }, 200);
+
+  // 4. 启动定时器
   scheduleNextTick();
 }
 
-// 调度下一次检查
 function scheduleNextTick() {
   setTimeout(function() {
     checkAndUpdate();
-    scheduleNextTick(); // 递归调用
-  }, 1000); // 每秒检查一次
+    scheduleNextTick();
+  }, 1000);
 }
 
-// 检查并更新
 function checkAndUpdate() {
   var dateObj = getCalculatedDate(offset);
   var currentMin = dateObj.getMinutes();
   
-  // 如果分钟变了，或者这是第一次运行 (lastMin === -1)
   if (currentMin !== lastMin) {
     lastMin = currentMin;
     refreshDisplay();
@@ -179,7 +188,7 @@ function checkAndUpdate() {
 }
 
 function getCalculatedDate(currentOffset) {
-  var now = new Date(); // 每次获取最新时间
+  var now = new Date();
   var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
   return new Date(utc + (currentOffset * 3600000));
 }
@@ -189,12 +198,10 @@ function refreshDisplay() {
   var h = dateObj.getHours();
   var m = dateObj.getMinutes();
   
-  // 更新数字时间
   var hStr = (h < 10 ? '0' : '') + h;
   var mStr = (m < 10 ? '0' : '') + m;
   document.getElementById('digital-clock').innerHTML = hStr + ':' + mStr;
   
-  // 更新日期
   var y = dateObj.getFullYear();
   var mo = dateObj.getMonth() + 1;
   var d = dateObj.getDate();
@@ -202,44 +209,34 @@ function refreshDisplay() {
   var dStr = (d < 10 ? '0' : '') + d;
   document.getElementById('date').innerHTML = y + '-' + moStr + '-' + dStr;
   
-  // 更新时区文字
   var tzStr = 'UTC' + (offset >= 0 ? '+' : '') + offset;
   document.getElementById('timezone-indicator').innerHTML = tzStr + ' (点击屏幕 +1 小时)';
   
-  // 【核心】强制更新指针
   updateHands(h, m);
 }
 
 function updateHands(h, m) {
-  // 转换为 12 小时制
   h = h % 12;
-  
-  // 计算角度
   var mAngle = m * 6;
   var hAngle = (h * 30) + (m * 0.5);
   
-  // 直接操作 style，不使用 CSS 变量或复杂逻辑
-  // 注意：Kindle 可能需要明确的单位
-  var hStyle = 'translateX(-50%) rotate(' + hAngle + 'deg)';
-  var mStyle = 'translateX(-50%) rotate(' + mAngle + 'deg)';
+  hourHand.style.transform = 'translateX(-50%) rotate(' + hAngle + 'deg)';
+  minuteHand.style.transform = 'translateX(-50%) rotate(' + mAngle + 'deg)';
   
-  hourHand.style.transform = hStyle;
-  minuteHand.style.transform = mStyle;
-  
-  // 调试：如果是 Kindle，有时候需要强制重绘父容器来触发子元素更新
-  // 这里通过微调 opacity 来强制触发重绘（肉眼不可见）
+  // 强制重绘
   analogClockEl.style.opacity = '0.99';
   setTimeout(function(){ analogClockEl.style.opacity = '1'; }, 50);
 }
 
 function createMarkersAndNumbers() {
-  // 防止重复添加
+  // 清空旧元素
   var existing = analogClockEl.querySelectorAll('.hour-mark, .clock-number');
   for(var i=0; i<existing.length; i++) existing[i].remove();
 
   var radius = analogClockEl.offsetWidth / 2;
+  if (radius === 0) radius = 150; // 防错默认值
   
-  // 刻度
+  // 1. 创建刻度
   for (var i = 0; i < 12; i++) {
     var mark = document.createElement('div');
     mark.className = 'hour-mark';
@@ -248,25 +245,45 @@ function createMarkersAndNumbers() {
     analogClockEl.appendChild(mark);
   }
 
-  // 小时数字
+  // 2. 创建小时数字 (1-12)
   var hRad = radius * 0.65;
   for (var h = 1; h <= 12; h++) {
     var el = document.createElement('div');
     el.className = 'clock-number hour-number';
-    el.innerHTML = h;
-    var rad = (h * 30 - 90) * (Math.PI / 180);
-    el.style.transform = 'translate(-50%, -50%) translate(' + (Math.cos(rad)*hRad) + 'px, ' + (Math.sin(rad)*hRad) + 'px)';
+    el.innerText = h; // 使用 innerText 兼容性更好
+    
+    // 计算坐标
+    var angle = (h * 30 - 90) * (Math.PI / 180);
+    var x = Math.cos(angle) * hRad;
+    var y = Math.sin(angle) * hRad;
+    
+    // 强制设置样式
+    el.style.left = '50%';
+    el.style.top = '50%';
+    el.style.transform = 'translate(-50%, -50%) translate(' + Math.round(x) + 'px, ' + Math.round(y) + 'px)';
+    el.style.zIndex = '10';
+    el.style.color = '#000000';
+    
     analogClockEl.appendChild(el);
   }
 
-  // 分钟数字
+  // 3. 创建分钟数字 (00, 05... 55)
   var mRad = radius * 0.45;
   for (var m = 0; m < 60; m += 5) {
     var el = document.createElement('div');
     el.className = 'clock-number minute-number';
-    el.innerHTML = (m < 10 ? '0' : '') + m;
-    var rad = (m * 6 - 90) * (Math.PI / 180);
-    el.style.transform = 'translate(-50%, -50%) translate(' + (Math.cos(rad)*mRad) + 'px, ' + (Math.sin(rad)*mRad) + 'px)';
+    el.innerText = (m < 10 ? '0' : '') + m;
+    
+    var angle = (m * 6 - 90) * (Math.PI / 180);
+    var x = Math.cos(angle) * mRad;
+    var y = Math.sin(angle) * mRad;
+    
+    el.style.left = '50%';
+    el.style.top = '50%';
+    el.style.transform = 'translate(-50%, -50%) translate(' + Math.round(x) + 'px, ' + Math.round(y) + 'px)';
+    el.style.zIndex = '10';
+    el.style.color = '#000000';
+    
     analogClockEl.appendChild(el);
   }
 }
@@ -274,12 +291,9 @@ function createMarkersAndNumbers() {
 function handleTap() {
   offset += 1;
   localStorage.setItem(STORAGE_KEY, offset.toString());
-  
-  // 重置 lastMin 强制立即刷新
   lastMin = -1;
   refreshDisplay();
   
-  // 闪动反馈
   var container = document.getElementById('container');
   container.className = 'flash-active';
   setTimeout(function(){ container.className = ''; }, 150);
@@ -288,7 +302,6 @@ function handleTap() {
 document.body.addEventListener('click', handleTap);
 document.body.addEventListener('touchstart', function(e){ handleTap(); }, false);
 
-// 启动
 init();
 </script>
 
