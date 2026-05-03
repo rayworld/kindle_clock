@@ -9,13 +9,12 @@
     color: #000000;
     margin: 0;
     padding: 0;
-    text-align: center;
+    text-align: center; /* 全局居中 */
     font-family: sans-serif;
-    /* 禁止选中文本，防止点击出现高亮 */
     -webkit-user-select: none;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
-    overflow: hidden; /* 防止出现滚动条 */
+    overflow: hidden;
   }
   
   #container {
@@ -27,26 +26,31 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: center; /* 关键：Flex 项目水平居中 */
     justify-content: center;
-    gap: 20px; /* 日期和时间的间距 */
+    gap: 20px;
   }
 
-  /* 日期样式 */
+  /* 日期样式 - 强化居中 */
   #date {
     font-weight: bold;
     line-height: 1.2;
     white-space: nowrap;
-    /* 初始大小，JS 会覆盖 */
+    text-align: center; /* 强制文本内容居中 */
+    margin: 0 auto; /* 自动左右边距，确保块级元素居中 */
+    display: block; /* 确保 margin auto 生效 */
+    width: 100%; /* 占满容器宽度以便内部文本居中 */
     font-size: 80px; 
   }
 
   /* 时间样式 */
   #clock {
-    font-weight: 900; /* 最粗 */
+    font-weight: 900;
     line-height: 1;
     white-space: nowrap;
-    /* 初始大小，JS 会覆盖 */
+    text-align: center;
+    display: block;
+    width: 100%;
     font-size: 150px;
   }
 
@@ -56,6 +60,7 @@
     color: #666666;
     margin-top: 15px;
     font-weight: normal;
+    text-align: center;
   }
   
   /* 点击闪动效果 */
@@ -68,43 +73,33 @@
 <body>
 
 <div id="container">
-  <!-- 日期显示 -->
   <div id="date">YYYY-MM-DD</div>
-  <!-- 时间显示 -->
   <div id="clock">00:00</div>
-  <!-- 时区提示 -->
   <div id="timezone-indicator">UTC+0 (点击屏幕 +1 小时)</div>
 </div>
 
 <script>
-// 配置
 var STORAGE_KEY = 'kindle_clock_offset';
 var offset = 0;
 
-// 初始化
 function init() {
   var saved = localStorage.getItem(STORAGE_KEY);
   if (saved !== null) {
     offset = parseInt(saved, 10);
   }
   updateDisplay();
-  
-  // 每秒检查一次变化
   setInterval(tick, 1000);
 }
 
-// 获取调整后的时间对象
 function getAdjustedDate() {
   var now = new Date();
   var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
   return new Date(utc + (3600000 * offset));
 }
 
-// 更新显示内容
 function updateDisplay() {
   var dateObj = getAdjustedDate();
   
-  // 处理日期 yyyy-MM-dd
   var y = dateObj.getFullYear();
   var m = dateObj.getMonth() + 1;
   var d = dateObj.getDate();
@@ -112,7 +107,6 @@ function updateDisplay() {
   if (d < 10) d = "0" + d;
   var dateStr = y + "-" + m + "-" + d;
   
-  // 处理时间 HH:mm
   var h = dateObj.getHours();
   var min = dateObj.getMinutes();
   if (h < 10) h = "0" + h;
@@ -121,28 +115,17 @@ function updateDisplay() {
   
   var tzStr = "UTC" + (offset >= 0 ? "+" : "") + offset;
   
-  // 更新 DOM
   var dateEl = document.getElementById("date");
   var clockEl = document.getElementById("clock");
   var tzEl = document.getElementById("timezone-indicator");
   
-  if (dateEl.innerHTML !== dateStr) {
-    dateEl.innerHTML = dateStr;
-  }
+  if (dateEl.innerHTML !== dateStr) dateEl.innerHTML = dateStr;
+  if (clockEl.innerHTML !== timeStr) clockEl.innerHTML = timeStr;
+  if (tzEl.innerHTML.indexOf(tzStr) === -1) tzEl.innerHTML = tzStr + " (点击屏幕 +1 小时)";
   
-  if (clockEl.innerHTML !== timeStr) {
-    clockEl.innerHTML = timeStr;
-  }
-  
-  if (tzEl.innerHTML.indexOf(tzStr) === -1) {
-    tzEl.innerHTML = tzStr + " (点击屏幕 +1 小时)";
-  }
-  
-  // 重新计算字体大小
   adjustFontSizes();
 }
 
-// 定时器逻辑
 var lastMinute = -1;
 function tick() {
   var dateObj = getAdjustedDate();
@@ -152,40 +135,30 @@ function tick() {
   }
 }
 
-// 独立计算日期和时间的字体大小，确保都占满宽度
 function adjustFontSizes() {
   var w = window.innerWidth || document.body.clientWidth;
   var h = window.innerHeight || document.body.clientHeight;
   
-  // --- 计算时间字体 ---
-  // 目标：宽度占屏幕的 90%，高度不超过屏幕的 50%
+  // 计算时间字体
   var clockSize = Math.floor(w * 0.95);
   if (clockSize > h * 0.45) clockSize = Math.floor(h * 0.45);
   if (clockSize < 40) clockSize = 40;
-  if (clockSize > 300) clockSize = 300; // 限制最大
-  
+  if (clockSize > 300) clockSize = 300;
   document.getElementById("clock").style.fontSize = clockSize + "px";
   
-  // --- 计算日期字体 ---
-  // 目标：宽度占屏幕的 80% (比时间稍窄一点，显得有层次)，高度不超过屏幕的 20%
+  // 计算日期字体
   var dateSize = Math.floor(w * 0.85);
   if (dateSize > h * 0.15) dateSize = Math.floor(h * 0.15);
   if (dateSize < 20) dateSize = 20;
   if (dateSize > 150) dateSize = 150;
-  
   document.getElementById("date").style.fontSize = dateSize + "px";
 }
 
-// 点击处理
 function handleTap() {
   offset += 1;
-  // 可选：如果超过 +14 则重置为 -12，或者一直累加。这里选择一直累加以便灵活调整
-  // if (offset > 14) offset = -12; 
-  
   localStorage.setItem(STORAGE_KEY, offset.toString());
   updateDisplay();
   
-  // 闪动反馈
   var container = document.getElementById("container");
   container.classList.add("flash-active");
   setTimeout(function() {
