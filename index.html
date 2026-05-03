@@ -3,33 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Kindle Clock</title>
+    <title>Kindle High Contrast Clock</title>
     <style>
-        /* 强制黑白模式，优化电子墨水屏显示 */
+        /* 全局重置，确保最高对比度 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #FFFFFF !important; /* 强制纯白背景 */
+            color: #000000 !important; /* 强制纯黑文字 */
+            overflow: hidden;
+        }
+
         body {
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #FFFFFF; /* 纯白背景 */
-            color: #000000; /* 纯黑文字 */
-            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; /* 通用清晰字体 */
-            overflow: hidden;
-            -webkit-font-smoothing: none; /* 关闭抗锯齿，使墨水屏文字更锐利 */
+            /* 关键：禁用所有字体平滑，让电子墨水屏显示锐利的黑白像素 */
+            -webkit-font-smoothing: none;
+            -moz-osx-font-smoothing: grayscale;
+            font-smooth: never;
+            text-rendering: optimizeSpeed; /* 优化速度而非美观，减少模糊 */
         }
 
         #clock {
-            font-weight: 900; /* 最粗字体 */
+            /* 使用最粗的字体 */
+            font-weight: 900; 
+            /* 字体家族：优先使用系统自带的粗黑体 */
+            font-family: "Arial Black", "Impact", "Helvetica Neue", Helvetica, Arial, sans-serif;
             white-space: nowrap;
             line-height: 1;
-            /* 初始大小，会被 JS 动态覆盖 */
-            font-size: 20vw; 
-        }
-
-        /* 隐藏滚动条 */
-        ::-webkit-scrollbar {
-            display: none;
+            letter-spacing: -2px; /* 稍微收紧字间距，让数字更紧凑 */
+            
+            /* 确保没有任何阴影或效果 */
+            text-shadow: none;
+            color: #000000;
+            
+            /* 初始大小，JS 会覆盖 */
+            font-size: 20vw;
         }
     </style>
 </head>
@@ -45,46 +57,33 @@
             const minutes = String(now.getMinutes()).padStart(2, '0');
             const timeString = `${hours}:${minutes}`;
             
-            // 仅当时间变化时更新 DOM，减少墨水屏刷新
             if (clockElement.textContent !== timeString) {
                 clockElement.textContent = timeString;
-                // 某些 Kindle 浏览器在内容变化时会触发重绘，这正好是我们需要的
             }
         }
 
         function adjustFontSize() {
-            // 获取窗口尺寸
             const width = window.innerWidth;
-            const height = window.innerHeight;
+            const maxWidth = width * 0.98; // 尽量占满，只留 1% 边距
             
-            // Kindle 6 英寸屏幕通常较窄，我们尝试找到一个最大的字体
-            // 策略：从 10vw 开始测试，逐步增加，直到超出屏幕宽度的 90%
-            let size = 10;
-            const step = 1;
-            const maxWidth = width * 0.95; // 留出少量边距
-
-            // 简单的线性搜索对于这种单次计算足够快
-            while (true) {
+            let size = 50; // 从 50px 开始测试
+            clockElement.style.fontSize = size + 'px';
+            
+            // 逐步增加字体直到接近屏幕宽度
+            while (clockElement.offsetWidth < maxWidth && size < 1000) {
+                size += 5;
                 clockElement.style.fontSize = size + 'px';
-                if (clockElement.offsetWidth > maxWidth) {
-                    // 如果超出了，回退一步
-                    clockElement.style.fontSize = (size - step) + 'px';
-                    break;
-                }
-                size += step;
-                
-                // 安全上限，防止死循环
-                if (size > 2000) break;
+            }
+            
+            // 如果最后一次增加导致超出，稍微回退一点（可选，通常直接保留最大值即可）
+            if (clockElement.offsetWidth > maxWidth) {
+                clockElement.style.fontSize = (size - 5) + 'px';
             }
         }
 
-        // 保持屏幕常亮的尝试（利用视频播放 API 或 定时器防止休眠）
-        // 注意：并非所有 Kindle 版本都支持此方法，部分仍需手动设置“永不休眠”
         function keepAlive() {
-            // 方法：创建一个隐藏的 video 标签或利用 noSleep 逻辑
-            // 这里使用一个简单的定时器配合请求唤醒锁 (Wake Lock API)，如果支持的话
             if ('wakeLock' in navigator) {
-                navigator.wakeLock.request('screen').catch(err => console.log(err));
+                navigator.wakeLock.request('screen').catch(() => {});
             }
         }
 
@@ -93,16 +92,17 @@
         adjustFontSize();
         keepAlive();
 
-        // 每分钟更新一次 (60000ms)
+        // 每分钟更新
         setInterval(updateClock, 60000);
 
-        // 监听窗口大小变化（例如旋转屏幕）
-        window.addEventListener('resize', () => {
+        // 窗口变化或点击时重新计算大小
+        window.addEventListener('resize', adjustFontSize);
+        document.addEventListener('click', () => {
             adjustFontSize();
+            // 强制重绘，有时有助于清除墨水屏残影
+            document.body.style.display = 'none';
+            setTimeout(() => { document.body.style.display = 'flex'; }, 50);
         });
-        
-        // 针对 Kindle 浏览器的特殊优化：点击屏幕重新调整字体（防止渲染错位）
-        document.addEventListener('click', adjustFontSize);
     </script>
 </body>
 </html>
