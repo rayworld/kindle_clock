@@ -83,26 +83,34 @@ function init() {
   if (saved !== null) {
     offset = parseInt(saved, 10);
   }
-  // 初始化时强制完整刷新一次
-  updateDisplay(true);
+  // 初始化时立即刷新一次
+  refreshDisplay();
+  // 启动定时器，每秒检查是否需要更新（处理分钟变化）
   setInterval(tick, 1000);
 }
 
-// 核心：获取基于用户偏移量后的时间对象
-function getAdjustedDate() {
+// 【核心函数】获取基于当前真实时间和最新偏移量的日期对象
+function getCalculatedDate(currentOffset) {
+  // 1. 获取当前的真实系统时间 (Now)
   var now = new Date();
-  // 1. 获取当前 UTC 毫秒数
-  var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-  // 2. 加上用户设定的偏移量 (小时 * 3600000)
-  return new Date(utc + (3600000 * offset));
+  
+  // 2. 转换为 UTC 时间戳 (毫秒)
+  // getTimezoneOffset() 返回的是本地时间与 UTC 的差值 (分钟)，需转为毫秒并反向加减
+  var utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+  
+  // 3. 加上用户设定的时区偏移量 (小时 -> 毫秒)
+  var adjustedTime = utcTime + (currentOffset * 3600000);
+  
+  // 4. 返回新的日期对象
+  return new Date(adjustedTime);
 }
 
-// 更新显示内容
-// forceRefresh: 是否强制重写 DOM (用于切换时区时触发墨水屏刷新)
-function updateDisplay(forceRefresh) {
-  var dateObj = getAdjustedDate();
+// 刷新显示内容
+function refreshDisplay() {
+  // 每次调用都重新计算当前时间 + 当前偏移量
+  var dateObj = getCalculatedDate(offset);
   
-  // --- 计算日期 yyyy-MM-dd ---
+  // --- 格式化日期 yyyy-MM-dd ---
   var y = dateObj.getFullYear();
   var m = dateObj.getMonth() + 1;
   var d = dateObj.getDate();
@@ -110,46 +118,38 @@ function updateDisplay(forceRefresh) {
   if (d < 10) d = "0" + d;
   var dateStr = y + "-" + m + "-" + d;
   
-  // --- 计算时间 HH:mm ---
+  // --- 格式化时间 HH:mm ---
   var h = dateObj.getHours();
   var min = dateObj.getMinutes();
   if (h < 10) h = "0" + h;
   if (min < 10) min = "0" + min;
   var timeStr = h + ":" + min;
   
-  // --- 时区提示 ---
+  // --- 格式化时区提示 ---
   var tzStr = "UTC" + (offset >= 0 ? "+" : "") + offset;
   
+  // --- 更新 DOM ---
   var dateEl = document.getElementById("date");
   var clockEl = document.getElementById("clock");
   var tzEl = document.getElementById("timezone-indicator");
   
-  // 如果强制刷新，或者内容确实变了，才更新 DOM
-  // 切换时区时，forceRefresh 为 true，会强制重写，触发 Kindle 重绘
-  if (forceRefresh || dateEl.innerHTML !== dateStr) {
-    dateEl.innerHTML = dateStr;
-  }
+  // 强制更新内容，确保 Kindle 重绘
+  dateEl.innerHTML = dateStr;
+  clockEl.innerHTML = timeStr;
+  tzEl.innerHTML = tzStr + " (点击屏幕 +1 小时)";
   
-  if (forceRefresh || clockEl.innerHTML !== timeStr) {
-    clockEl.innerHTML = timeStr;
-  }
-  
-  // 时区文字通常只在切换时变
-  if (forceRefresh || tzEl.innerHTML.indexOf(tzStr) === -1) {
-    tzEl.innerHTML = tzStr + " (点击屏幕 +1 小时)";
-  }
-  
-  // 每次更新都重新计算字体，确保布局正常
+  // 调整字体大小
   adjustFontSizes();
 }
 
-// 定时器：每分钟检查一次
+// 定时器逻辑：只有分钟变了才调用刷新，减少不必要的重绘
 var lastMinute = -1;
 function tick() {
-  var dateObj = getAdjustedDate();
+  // 这里也使用同样的逻辑计算当前分钟，判断是否变化
+  var dateObj = getCalculatedDate(offset);
   if (dateObj.getMinutes() !== lastMinute) {
     lastMinute = dateObj.getMinutes();
-    updateDisplay(false); // 正常更新，不强制重绘
+    refreshDisplay();
   }
 }
 
@@ -170,17 +170,19 @@ function adjustFontSizes() {
   document.getElementById("date").style.fontSize = dateSize + "px";
 }
 
-// 点击处理：切换时区
+// 【关键修改】点击处理逻辑
 function handleTap() {
+  // 1. 先增加偏移量
   offset += 1;
   
-  // 保存设置
+  // 2. 保存到本地存储
   localStorage.setItem(STORAGE_KEY, offset.toString());
   
-  // 【关键】强制更新显示，确保日期和时间立即根据新时区重算并重绘
-  updateDisplay(true);
+  // 3. 【重要】立即重新获取当前真实时间 + 新偏移量，并刷新显示
+  // 不再依赖旧的时间对象，而是完全重新计算
+  refreshDisplay();
   
-  // 闪动反馈
+  // 4. 视觉反馈
   var container = document.getElementById("container");
   container.classList.add("flash-active");
   setTimeout(function() {
