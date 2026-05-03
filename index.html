@@ -9,7 +9,7 @@
     color: #000000;
     margin: 0;
     padding: 0;
-    text-align: center; /* 全局居中 */
+    text-align: center;
     font-family: sans-serif;
     -webkit-user-select: none;
     user-select: none;
@@ -26,24 +26,22 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    align-items: center; /* 关键：Flex 项目水平居中 */
+    align-items: center;
     justify-content: center;
     gap: 20px;
   }
 
-  /* 日期样式 - 强化居中 */
   #date {
     font-weight: bold;
     line-height: 1.2;
     white-space: nowrap;
-    text-align: center; /* 强制文本内容居中 */
-    margin: 0 auto; /* 自动左右边距，确保块级元素居中 */
-    display: block; /* 确保 margin auto 生效 */
-    width: 100%; /* 占满容器宽度以便内部文本居中 */
+    text-align: center;
+    margin: 0 auto;
+    display: block;
+    width: 100%;
     font-size: 80px; 
   }
 
-  /* 时间样式 */
   #clock {
     font-weight: 900;
     line-height: 1;
@@ -54,7 +52,6 @@
     font-size: 150px;
   }
 
-  /* 时区指示器样式 */
   #timezone-indicator {
     font-size: 18px;
     color: #666666;
@@ -63,7 +60,6 @@
     text-align: center;
   }
   
-  /* 点击闪动效果 */
   .flash-active {
     opacity: 0.4;
     transition: opacity 0.1s;
@@ -87,19 +83,26 @@ function init() {
   if (saved !== null) {
     offset = parseInt(saved, 10);
   }
-  updateDisplay();
+  // 初始化时强制完整刷新一次
+  updateDisplay(true);
   setInterval(tick, 1000);
 }
 
+// 核心：获取基于用户偏移量后的时间对象
 function getAdjustedDate() {
   var now = new Date();
+  // 1. 获取当前 UTC 毫秒数
   var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  // 2. 加上用户设定的偏移量 (小时 * 3600000)
   return new Date(utc + (3600000 * offset));
 }
 
-function updateDisplay() {
+// 更新显示内容
+// forceRefresh: 是否强制重写 DOM (用于切换时区时触发墨水屏刷新)
+function updateDisplay(forceRefresh) {
   var dateObj = getAdjustedDate();
   
+  // --- 计算日期 yyyy-MM-dd ---
   var y = dateObj.getFullYear();
   var m = dateObj.getMonth() + 1;
   var d = dateObj.getDate();
@@ -107,31 +110,46 @@ function updateDisplay() {
   if (d < 10) d = "0" + d;
   var dateStr = y + "-" + m + "-" + d;
   
+  // --- 计算时间 HH:mm ---
   var h = dateObj.getHours();
   var min = dateObj.getMinutes();
   if (h < 10) h = "0" + h;
   if (min < 10) min = "0" + min;
   var timeStr = h + ":" + min;
   
+  // --- 时区提示 ---
   var tzStr = "UTC" + (offset >= 0 ? "+" : "") + offset;
   
   var dateEl = document.getElementById("date");
   var clockEl = document.getElementById("clock");
   var tzEl = document.getElementById("timezone-indicator");
   
-  if (dateEl.innerHTML !== dateStr) dateEl.innerHTML = dateStr;
-  if (clockEl.innerHTML !== timeStr) clockEl.innerHTML = timeStr;
-  if (tzEl.innerHTML.indexOf(tzStr) === -1) tzEl.innerHTML = tzStr + " (点击屏幕 +1 小时)";
+  // 如果强制刷新，或者内容确实变了，才更新 DOM
+  // 切换时区时，forceRefresh 为 true，会强制重写，触发 Kindle 重绘
+  if (forceRefresh || dateEl.innerHTML !== dateStr) {
+    dateEl.innerHTML = dateStr;
+  }
   
+  if (forceRefresh || clockEl.innerHTML !== timeStr) {
+    clockEl.innerHTML = timeStr;
+  }
+  
+  // 时区文字通常只在切换时变
+  if (forceRefresh || tzEl.innerHTML.indexOf(tzStr) === -1) {
+    tzEl.innerHTML = tzStr + " (点击屏幕 +1 小时)";
+  }
+  
+  // 每次更新都重新计算字体，确保布局正常
   adjustFontSizes();
 }
 
+// 定时器：每分钟检查一次
 var lastMinute = -1;
 function tick() {
   var dateObj = getAdjustedDate();
   if (dateObj.getMinutes() !== lastMinute) {
     lastMinute = dateObj.getMinutes();
-    updateDisplay();
+    updateDisplay(false); // 正常更新，不强制重绘
   }
 }
 
@@ -139,14 +157,12 @@ function adjustFontSizes() {
   var w = window.innerWidth || document.body.clientWidth;
   var h = window.innerHeight || document.body.clientHeight;
   
-  // 计算时间字体
   var clockSize = Math.floor(w * 0.95);
   if (clockSize > h * 0.45) clockSize = Math.floor(h * 0.45);
   if (clockSize < 40) clockSize = 40;
   if (clockSize > 300) clockSize = 300;
   document.getElementById("clock").style.fontSize = clockSize + "px";
   
-  // 计算日期字体
   var dateSize = Math.floor(w * 0.85);
   if (dateSize > h * 0.15) dateSize = Math.floor(h * 0.15);
   if (dateSize < 20) dateSize = 20;
@@ -154,11 +170,17 @@ function adjustFontSizes() {
   document.getElementById("date").style.fontSize = dateSize + "px";
 }
 
+// 点击处理：切换时区
 function handleTap() {
   offset += 1;
-  localStorage.setItem(STORAGE_KEY, offset.toString());
-  updateDisplay();
   
+  // 保存设置
+  localStorage.setItem(STORAGE_KEY, offset.toString());
+  
+  // 【关键】强制更新显示，确保日期和时间立即根据新时区重算并重绘
+  updateDisplay(true);
+  
+  // 闪动反馈
   var container = document.getElementById("container");
   container.classList.add("flash-active");
   setTimeout(function() {
